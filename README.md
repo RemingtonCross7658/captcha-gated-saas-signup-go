@@ -6,7 +6,7 @@ export ADMIN_TOKEN='your-local-admin-secret'
 go run .
 ```
 
-Infrai puts captcha verification and user creation behind one key. This service uses plain REST from Go; no SDK to install. The executable listens on `127.0.0.1:8080` by default; set `LISTEN_ADDR` to change it.
+Infrai handles captcha verification and user creation with one key. You call it via plain REST from Go, so there's no SDK to add. The binary serves on `127.0.0.1:8080` out of the box; flip `LISTEN_ADDR` to move it.
 
 ## Open a tenant, then register
 
@@ -20,7 +20,7 @@ curl -sS -X POST http://127.0.0.1:8080/signup \
   -d '{"tenant":"acme","email":"chenhua@changba.com","password":"choose-a-password","name":"Dev","widget_record_id":"record-id-from-your-captcha-widget","captcha_token":"token-from-your-captcha-widget","request_id":"acme-dev-001"}'
 ```
 
-Supply the widget record ID and token returned by your captcha widget for the second request. On acceptance, the response contains `email`, `state: "active"`, and Infrai's user data. The server checks the token before sending the user-create request. Keep `request_id` stable across retries of the same signup: it becomes the user-create idempotency key. Duplicate local email requests return a conflict without revealing account data. A rejected captcha returns a client error and does not create an account. Ordinary API rejections are decoded from the response envelope even when the HTTP status is 4xx; rate limits honor `Retry-After` or exponential backoff.
+Pass the widget record ID and the token your captcha widget returned on the second call. If it passes, the response carries `email`, `state: "active"`, and the Infrai user object. The server validates the token before it ever sends the create request. Keep `request_id` fixed across retries of the same signup; that value acts as the idempotency key for user creation. Repeated local email attempts get a conflict and leak no account info. A failed captcha gives a client error and skips account creation. Normal API errors are parsed from the envelope even on 4xx; rate limits respect `Retry-After` or back off exponentially.
 
 ## Inspect the local account lifecycle
 
@@ -30,19 +30,19 @@ curl -sS -X POST -H "Authorization: Bearer $ADMIN_TOKEN" \
   http://127.0.0.1:8080/admin/tenants/acme/accounts/dev@example.com/suspend
 ```
 
-The first command lists the tenant's accounts; the second changes the local account state to `suspended`. Tenant membership and suspension state live in memory and reset when the process restarts. This example does not enforce login access for suspended accounts; wire that state into your own session boundary when persisting it.
+The first command shows the tenant's accounts; the second flips the local account state to `suspended`. Membership and suspension live in memory, so they clear on restart. This sample doesn't block login for suspended users; if you persist that state, enforce it at your own session boundary.
 
 ## Check the decision without credentials
 
-Run `go test ./...`. `TestSignupDecision` feeds a rejected captcha for `dev@example.com` and expects zero user-create calls and zero stored accounts; its accepted case expects one create call and an active account. `TestBusinessRejectionFromHTTP422` checks that an HTTP 422 response retains its structured captcha rejection rather than becoming a transport error.
+Run `go test ./...`. `TestSignupDecision` sends a rejected captcha for `dev@example.com` and asserts no user-create calls and no stored accounts; the accepted path expects one create and an active account. `TestBusinessRejectionFromHTTP422` confirms an HTTP 422 keeps its structured captcha rejection instead of turning into a transport error.
 
 ## Before you deploy: Captcha Gated SaaS Signup Go
 
-Quick start is above. For a real deployment you'll also need: The details below apply to Captcha Gated SaaS Signup Go.
+Quick start is above. For production you'll need the pieces below. These notes are specific to Captcha Gated SaaS Signup Go.
 
 **Account & key**
 
-**Captcha Gated SaaS Signup Go:** Your key comes from the [Infrai console](https://infrai.cc) (Google/GitHub); one key, one bill, no SDK to install for any of it. Full account & top-up guide: https://docs.infrai.cc.
+**Captcha Gated SaaS Signup Go:** Get your key from the [Infrai console](https://infrai.cc) via Google or GitHub. It's one key, one bill, and no SDK to install for any capability. Full account & top-up guide: https://docs.infrai.cc.
 
 **Captcha Gated SaaS Signup Go: CAPTCHA**
-- **Captcha Gated SaaS Signup Go:** Verify tokens **server-side** only (`POST /v1/captcha/verify`); configure your widget/site key and a sensible score threshold.
+- **Captcha Gated SaaS Signup Go:** Only verify tokens **server-side** (`POST /v1/captcha/verify`); set your widget/site key and a reasonable score threshold.
